@@ -28,31 +28,14 @@ function pathStartsWithIpPortSegment(pathname: string): boolean {
   return /^\/(?:\d{1,3}\.){3}\d{1,3}:\d+(?:\/|$)/.test(pathname);
 }
 
-function isUserAppPath(pathname: string): boolean {
-  if (pathname === "/dashboard") return true;
-  if (pathname.startsWith("/dashboard/")) return true;
-  if (pathname === "/proposals") return true;
-  if (pathname.startsWith("/proposals/")) return true;
-  if (pathname === "/create-proposal") return true;
-  if (pathname.startsWith("/create-proposal/")) return true;
-  return false;
-}
-
-function isAdminAppPath(pathname: string): boolean {
-  return pathname === "/admin" || pathname.startsWith("/admin/");
-}
-
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const token = request.cookies.get(SESSION_COOKIE)?.value;
   const session = await verifySessionToken(token);
 
   if (pathStartsWithIpPortSegment(pathname)) {
-    const dest = !session
-      ? "/login"
-      : session.role === "admin"
-        ? "/admin"
-        : "/dashboard";
+    const dest =
+      session?.role === "admin" ? "/admin" : "/dashboard";
     return redirectPath(request, dest);
   }
 
@@ -65,31 +48,8 @@ export async function middleware(request: NextRequest) {
   }
 
   if (pathname === "/") {
-    if (!session) {
-      return redirectPath(request, "/login");
-    }
-    const dest = session.role === "admin" ? "/admin" : "/dashboard";
+    const dest = session?.role === "admin" ? "/admin" : "/dashboard";
     return redirectPath(request, dest);
-  }
-
-  if (isUserAppPath(pathname)) {
-    if (!session) {
-      return redirectPath(request, "/login");
-    }
-    if (session.role === "admin") {
-      return redirectPath(request, "/admin");
-    }
-    return NextResponse.next();
-  }
-
-  if (isAdminAppPath(pathname)) {
-    if (!session) {
-      return redirectPath(request, "/login");
-    }
-    if (session.role !== "admin") {
-      return redirectPath(request, "/dashboard");
-    }
-    return NextResponse.next();
   }
 
   return NextResponse.next();
