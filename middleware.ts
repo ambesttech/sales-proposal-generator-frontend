@@ -3,12 +3,29 @@ import type { NextRequest } from "next/server";
 
 import { SESSION_COOKIE, verifySessionToken } from "@/lib/auth/crypto";
 
-/** Same-origin redirect; avoids malformed Location when proxy headers differ from request.url. */
+/** Origin the browser used (not nextUrl), so Location is always absolute — never "host:port" which browsers resolve as a relative path and stack. */
+function getPublicOrigin(request: NextRequest): string {
+  const host = request.headers.get("host");
+  if (!host) {
+    return request.nextUrl.origin;
+  }
+  const forwarded = request.headers.get("x-forwarded-proto");
+  const proto =
+    forwarded?.split(",")[0]?.trim() ||
+    request.nextUrl.protocol.replace(":", "") ||
+    "http";
+  return `${proto}://${host}`;
+}
+
 function redirectPath(request: NextRequest, pathname: string) {
-  const url = request.nextUrl.clone();
-  url.pathname = pathname;
+  const url = new URL(pathname, `${getPublicOrigin(request)}/`);
   url.search = "";
   return NextResponse.redirect(url);
+}
+
+/** True when path was poisoned by a bad relative redirect (e.g. Location: 38.x:3100). */
+function pathStartsWithIpPortSegment(pathname: string): boolean {
+  return /^\/(?:\d{1,3}\.){3}\d{1,3}:\d+(?:\/|$)/.test(pathname);
 }
 
 function isUserAppPath(pathname: string): boolean {
@@ -29,6 +46,15 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const token = request.cookies.get(SESSION_COOKIE)?.value;
   const session = await verifySessionToken(token);
+
+  if (pathStartsWithIpPortSegment(pathname)) {
+    const dest = !session
+      ? "/login"
+      : session.role === "admin"
+        ? "/admin"
+        : "/dashboard";
+    return redirectPath(request, dest);
+  }
 
   if (pathname === "/login") {
     if (session) {
