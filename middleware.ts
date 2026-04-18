@@ -3,6 +3,14 @@ import type { NextRequest } from "next/server";
 
 import { SESSION_COOKIE, verifySessionToken } from "@/lib/auth/crypto";
 
+/** Same-origin redirect; avoids malformed Location when proxy headers differ from request.url. */
+function redirectPath(request: NextRequest, pathname: string) {
+  const url = request.nextUrl.clone();
+  url.pathname = pathname;
+  url.search = "";
+  return NextResponse.redirect(url);
+}
+
 function isUserAppPath(pathname: string): boolean {
   if (pathname === "/dashboard") return true;
   if (pathname.startsWith("/dashboard/")) return true;
@@ -25,35 +33,35 @@ export async function middleware(request: NextRequest) {
   if (pathname === "/login") {
     if (session) {
       const dest = session.role === "admin" ? "/admin" : "/dashboard";
-      return NextResponse.redirect(new URL(dest, request.url));
+      return redirectPath(request, dest);
     }
     return NextResponse.next();
   }
 
   if (pathname === "/") {
     if (!session) {
-      return NextResponse.redirect(new URL("/login", request.url));
+      return redirectPath(request, "/login");
     }
     const dest = session.role === "admin" ? "/admin" : "/dashboard";
-    return NextResponse.redirect(new URL(dest, request.url));
+    return redirectPath(request, dest);
   }
 
   if (isUserAppPath(pathname)) {
     if (!session) {
-      return NextResponse.redirect(new URL("/login", request.url));
+      return redirectPath(request, "/login");
     }
     if (session.role === "admin") {
-      return NextResponse.redirect(new URL("/admin", request.url));
+      return redirectPath(request, "/admin");
     }
     return NextResponse.next();
   }
 
   if (isAdminAppPath(pathname)) {
     if (!session) {
-      return NextResponse.redirect(new URL("/login", request.url));
+      return redirectPath(request, "/login");
     }
     if (session.role !== "admin") {
-      return NextResponse.redirect(new URL("/dashboard", request.url));
+      return redirectPath(request, "/dashboard");
     }
     return NextResponse.next();
   }
